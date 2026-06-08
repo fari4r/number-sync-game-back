@@ -4,12 +4,18 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 
 const app = express();
-app.use(cors());
+
+app.use(
+  cors({
+    origin: "https://lucent-sawine-e2ece4.netlify.app",
+  })
+);
 
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
-    origin: "https://lucent-sawine-e2ece4.netlify.app/",
+    origin: "https://lucent-sawine-e2ece4.netlify.app",
     methods: ["GET", "POST"],
   },
 });
@@ -77,29 +83,25 @@ io.on("connection", (socket) => {
   socket.on("reset_game", ({ roomId }) => {
     const room = rooms[roomId];
     if (room) {
-      // Add player to rematch votes if they aren't already in it
       if (!room.rematches.includes(socket.id)) {
         room.rematches.push(socket.id);
       }
 
       const totalPlayersInRoom = Object.keys(room.players).length;
 
-      // Check if EVERYONE in the room voted to play again
       if (
         room.rematches.length >= totalPlayersInRoom &&
         totalPlayersInRoom > 1
       ) {
-        // Unanimous agreement reached! Clear everything.
         for (const id in room.players) {
           room.players[id].choice = null;
         }
-        room.rematches = []; // Reset votes tracker
+        room.rematches = [];
 
         io.to(roomId).emit("room_data", room);
         io.to(roomId).emit("game_result", null);
         console.log(`🔄 Unanimous match reset executed in Room [${roomId}]`);
       } else {
-        // Otherwise, let everyone know how many votes we have so far
         io.to(roomId).emit("rematch_update", {
           votesReceived: room.rematches.length,
           totalRequired: totalPlayersInRoom,
@@ -114,15 +116,12 @@ io.on("connection", (socket) => {
       const room = rooms[roomId];
       if (room && room.players[socket.id]) {
         delete room.players[socket.id];
-
-        // Also remove them from rematch list if they voted before disconnecting
         room.rematches = room.rematches.filter((id) => id !== socket.id);
 
         if (Object.keys(room.players).length === 0) {
           delete rooms[roomId];
         } else {
           io.to(roomId).emit("room_data", room);
-          // Check if the remaining players now constitute a unanimous vote
           const totalPlayersInRoom = Object.keys(room.players).length;
           if (
             room.rematches.length >= totalPlayersInRoom &&
